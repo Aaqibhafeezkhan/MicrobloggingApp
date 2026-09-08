@@ -1,224 +1,86 @@
 # Microblogging Application
 
-MicrobloggingApp is a simple microblogging platform that allows users to create short posts (up to 140 characters), upload images, and view a timeline of posts. The application includes real-time updates using SignalR, search and filter functionality, and robust backend API services. It is designed using .NET 8, Razor Pages for the frontend, and Azure Blob Storage for image storage.
+MicrobloggingApp is a .NET microblogging platform with short posts, image uploads, timeline filtering, post management, and real-time updates through SignalR.
 
----
+## Stack
 
-## **Features**
-- **Post Creation:** Create short text posts with optional image attachments.
-- **Timeline Display:** View all posts in chronological order with optimized image rendering.
-- **Real-Time Updates:** See new posts instantly without refreshing, powered by SignalR.
-- **Search and Filters:** Search posts by keywords or filter them by date.
-- **Post Management:** Edit or delete posts directly from the timeline.
+- ASP.NET Core Web API (.NET 8)
+- Razor Pages frontend (.NET 8)
+- SQL Server
+- Entity Framework Core
+- Azure Blob Storage
+- SignalR
+- Hangfire
+- ImageSharp
 
----
+## Projects
 
-## **Technologies Used**
-- **Backend:** .NET 8 (ASP.NET Core Web API)
-- **Frontend:** Razor Pages
-- **Database:** SQL Server
-- **Image Processing:** ImageSharp
-- **Real-Time Updates:** SignalR
-- **Cloud Storage:** Azure Blob Storage
-- **Hosting:** Azure App Service
-- **CI/CD:** Azure DevOps Pipelines / GitHub Actions
+- `MicrobloggingApp.API` - REST API, authentication, SignalR hub, background processing
+- `MicrobloggingApp.Core` - application services and contracts
+- `MicrobloggingApp.Data` - EF Core context, entities, and repositories
+- `MicrobloggingApp.Frontend` - Razor Pages UI
+- `MicrobloggingApp.Tests` - automated tests
 
----
+## Configuration
 
-## **Deployment Steps**
+The API expects these settings to be supplied through configuration or environment variables:
 
-### **Backend Deployment**
+- `ConnectionStrings:DefaultConnection`
+- `JwtSettings:SecretKey`
+- `JwtSettings:Issuer`
+- `JwtSettings:Audience`
+- `AzureBlobStorage:ConnectionString`
+- `AzureBlobStorage:ContainerName`
+- `Cors:AllowedOrigins`
 
-1. **Publish the Backend API:**
-   - Navigate to the API project directory:
-     ```bash
-     cd MicrobloggingApp.API
-     ```
-   - Publish the project:
-     ```bash
-     dotnet publish -c Release -o ./publish
-     ```
+The JWT secret must be at least 32 characters long.
 
-2. **Create an Azure App Service:**
-   - Log in to the Azure Portal and create a new App Service for the backend.
-   - Select the runtime stack as `.NET 8`.
+The frontend expects:
 
-3. **Deploy to Azure:**
-   - Use Azure CLI to deploy:
-     ```bash
-     az webapp deploy --resource-group <YourResourceGroup> --name <YourBackendAppName> --src-path ./publish
-     ```
+- `ApiBaseUrl`
+- `SignalRHubUrl`
 
-4. **Set Configuration in Azure:**
-   - Go to your App Service in Azure → **Configuration** → **Application Settings**.
-   - Add the following settings:
-     - `AzureBlobStorage:ConnectionString`: Your Azure Blob Storage connection string.
-     - `AzureBlobStorage:ContainerName`: Your container name.
+For Azure App Service, configure these values under Application settings. Nested ASP.NET Core configuration keys can be supplied with `__`, for example `JwtSettings__SecretKey`.
 
-5. **Test the API:**
-   - Open the App Service URL in your browser and access the API endpoints (e.g., `/swagger`).
+## Local Development
 
----
+Restore and build the solution:
 
-### **Frontend Deployment**
+```bash
+dotnet restore MicrobloggingApp.sln
+dotnet build MicrobloggingApp.sln --configuration Release
+```
 
-1. **Publish the Frontend:**
-   - Navigate to the frontend project directory:
-     ```bash
-     cd MicrobloggingApp.Frontend
-     ```
-   - Publish the project:
-     ```bash
-     dotnet publish -c Release -o ./publish
-     ```
+Run the API:
 
-2. **Create an Azure App Service:**
-   - Log in to the Azure Portal and create a new App Service for the frontend.
-   - Select the runtime stack as `.NET 8`.
+```bash
+dotnet run --project MicrobloggingApp.API
+```
 
-3. **Deploy to Azure:**
-   - Use Azure CLI to deploy:
-     ```bash
-     az webapp deploy --resource-group <YourResourceGroup> --name <YourFrontendAppName> --src-path ./publish
-     ```
+Run the frontend:
 
-4. **Update API Base URL in the Frontend:**
-   - Ensure the frontend is configured to communicate with the deployed backend by updating the base URL in `Program.cs`:
-     ```csharp
-     builder.Services.AddHttpClient("MicrobloggingAPI", client =>
-     {
-         client.BaseAddress = new Uri("https://<YourBackendAppName>.azurewebsites.net/");
-     });
-     ```
+```bash
+dotnet run --project MicrobloggingApp.Frontend
+```
 
-5. **Test the Frontend:**
-   - Open the frontend App Service URL and test all features (e.g., post creation, timeline updates).
+The API exposes `/health` for a basic availability check.
 
----
+## Manual Deployment
 
-## **Setting Up CI/CD for Automatic Deployment**
+### API
 
-### **Using Azure DevOps Pipelines**
+```bash
+dotnet publish MicrobloggingApp.API/MicrobloggingApp.API.csproj --configuration Release --output ./publish/api
+```
 
-1. **Create a New Pipeline:**
-   - In Azure DevOps, create a new pipeline linked to your Git repository.
+Deploy the contents of `./publish/api` to the API hosting service and configure the required application settings.
 
-2. **Add the Following YAML Configuration:**
-   - This pipeline will build and deploy both the API and frontend projects:
-     ```yaml
-     trigger:
-       branches:
-         include:
-           - main
+### Frontend
 
-     pool:
-       vmImage: 'windows-latest'
+```bash
+dotnet publish MicrobloggingApp.Frontend/MicrobloggingApp.Frontend.csproj --configuration Release --output ./publish/frontend
+```
 
-     stages:
-       - stage: Build
-         jobs:
-           - job: Build
-             steps:
-               - task: UseDotNet@2
-                 inputs:
-                   packageType: 'sdk'
-                   version: '8.0.x'
+Deploy the contents of `./publish/frontend` to the frontend hosting service and set `ApiBaseUrl` and `SignalRHubUrl` to the deployed API endpoints.
 
-               - script: dotnet build MicrobloggingApp.sln --configuration Release
-                 displayName: 'Build Solution'
-
-       - stage: Deploy_Backend
-         dependsOn: Build
-         jobs:
-           - job: DeployBackend
-             steps:
-               - script: dotnet publish MicrobloggingApp.API/MicrobloggingApp.API.csproj --configuration Release --output ./publish
-                 displayName: 'Publish Backend API'
-
-               - task: AzureWebApp@1
-                 inputs:
-                   azureSubscription: '<YourAzureSubscription>'
-                   appType: 'webApp'
-                   appName: '<YourBackendAppName>'
-                   package: './publish'
-
-       - stage: Deploy_Frontend
-         dependsOn: Build
-         jobs:
-           - job: DeployFrontend
-             steps:
-               - script: dotnet publish MicrobloggingApp.Frontend/MicrobloggingApp.Frontend.csproj --configuration Release --output ./publish
-                 displayName: 'Publish Frontend'
-
-               - task: AzureWebApp@1
-                 inputs:
-                   azureSubscription: '<YourAzureSubscription>'
-                   appType: 'webApp'
-                   appName: '<YourFrontendAppName>'
-                   package: './publish'
-     ```
-
-3. **Run the Pipeline:**
-   - Trigger the pipeline and monitor the deployment logs in Azure DevOps.
-
----
-
-### **Using GitHub Actions**
-
-1. **Create a GitHub Actions Workflow:**
-   - Add a file named `.github/workflows/deploy.yml` to your repository.
-
-2. **Add the Following Configuration:**
-   ```yaml
-   name: Deploy to Azure
-
-   on:
-     push:
-       branches:
-         - main
-
-   jobs:
-     build:
-       runs-on: ubuntu-latest
-
-       steps:
-       - name: Checkout Code
-         uses: actions/checkout@v3
-
-       - name: Set Up .NET
-         uses: actions/setup-dotnet@v3
-         with:
-           dotnet-version: '8.0.x'
-
-       - name: Build Solution
-         run: dotnet build MicrobloggingApp.sln --configuration Release
-
-     deploy_backend:
-       needs: build
-       runs-on: ubuntu-latest
-
-       steps:
-       - name: Publish Backend
-         run: dotnet publish MicrobloggingApp.API/MicrobloggingApp.API.csproj --configuration Release --output ./publish
-
-       - name: Deploy Backend to Azure
-         uses: azure/webapps-deploy@v2
-         with:
-           app-name: '<YourBackendAppName>'
-           slot-name: 'production'
-           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
-
-     deploy_frontend:
-       needs: build
-       runs-on: ubuntu-latest
-
-       steps:
-       - name: Publish Frontend
-         run: dotnet publish MicrobloggingApp.Frontend/MicrobloggingApp.Frontend.csproj --configuration Release --output ./publish
-
-       - name: Deploy Frontend to Azure
-         uses: azure/webapps-deploy@v2
-         with:
-           app-name: '<YourFrontendAppName>'
-           slot-name: 'production'
-           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+No automated deployment workflow is required. Deployment is intentionally manual.

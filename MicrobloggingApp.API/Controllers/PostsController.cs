@@ -1,7 +1,6 @@
-﻿using Hangfire;
+using Hangfire;
 using MicrobloggingApp.API.DTOs;
 using MicrobloggingApp.API.Hubs;
-using MicrobloggingApp.API.Services;
 using MicrobloggingApp.API.Services.Interfaces;
 using MicrobloggingApp.Core;
 using Microsoft.AspNetCore.Authorization;
@@ -16,35 +15,47 @@ namespace MicrobloggingApp.API.Controllers
     public class PostsController : ControllerBase
     {
         private readonly IPostService _postService;
+        private readonly IUserService _userService;
         private readonly IBlobStorageService _blobStorageService;
         private readonly IHubContext<TimelineHub> _hubContext;
 
-        public PostsController(IPostService postService, IBlobStorageService blobStorageService, IHubContext<TimelineHub> hubContext)
+        public PostsController(IPostService postService, IUserService userService, IBlobStorageService blobStorageService, IHubContext<TimelineHub> hubContext)
         {
             _postService = postService;
+            _userService = userService;
             _blobStorageService = blobStorageService;
             _hubContext = hubContext;
         }
 
         [HttpPost]
-        public async Task<IActionResult> CreatePost([FromForm] CreatePostRequest request, BlobStorageService blobStorageService)
+        public async Task<IActionResult> CreatePost([FromForm] CreatePostRequest request)
         {
+            if (string.IsNullOrWhiteSpace(request.Text))
+                return BadRequest("Post text is required.");
+
             if (request.Text.Length > 140)
                 return BadRequest("Post text exceeds 140 characters.");
+
+            if (request.Image == null)
+                return BadRequest("An image is required.");
 
             if (request.Image.Length > 2 * 1024 * 1024)
                 return BadRequest("Image size exceeds 2MB.");
 
-            using var stream = request.Image.OpenReadStream();
+            var username = User.Identity?.Name;
+            var userId = username == null ? null : _userService.GetUserId(username);
+            if (!userId.HasValue)
+                return Unauthorized();
+
+            await using var stream = request.Image.OpenReadStream();
             var originalImageUrl = await _blobStorageService.UploadFileAsync(request.Image.FileName, stream);
 
             var processedImageFileName = $"processed-{request.Image.FileName}";
             BackgroundJob.Enqueue<IImageProcessingService>(service =>
                 service.ProcessImageAsync(originalImageUrl, processedImageFileName));
 
-            _postService.CreatePost(request.Text, originalImageUrl, GetUserId());
+            _postService.CreatePost(request.Text, originalImageUrl, userId.Value);
 
-            // Notify clients of the new post
             await _hubContext.Clients.All.SendAsync("ReceiveNewPost", request.Text, originalImageUrl, DateTime.UtcNow.ToString("g"));
 
             return Ok("Post created successfully.");
@@ -52,33 +63,27 @@ namespace MicrobloggingApp.API.Controllers
 
         [HttpGet]
         public IActionResult GetTimeline(
-    [FromQuery] int page = 1,
-    [FromQuery] int pageSize = 10,
-    [FromQuery] string screenSize = "medium",
-    [FromQuery] string search = "",
-    [FromQuery] DateTime? startDate = null,
-    [FromQuery] DateTime? endDate = null)
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 10,
+            [FromQuery] string screenSize = "medium",
+            [FromQuery] string search = "",
+            [FromQuery] DateTime? startDate = null,
+            [FromQuery] DateTime? endDate = null)
         {
+            page = Math.Max(page, 1);
+            pageSize = Math.Clamp(pageSize, 1, 100);
+
             var timeline = _postService.GetTimeline();
 
-            // Apply search filter
-            if (!string.IsNullOrEmpty(search))
-            {
+            if (!string.IsNullOrWhiteSpace(search))
                 timeline = timeline.Where(post => post.Text.Contains(search, StringComparison.OrdinalIgnoreCase));
-            }
 
-            // Apply date filters
             if (startDate.HasValue)
-            {
                 timeline = timeline.Where(post => post.CreatedAt >= startDate.Value);
-            }
 
             if (endDate.HasValue)
-            {
                 timeline = timeline.Where(post => post.CreatedAt <= endDate.Value);
-            }
 
-            // Pagination
             var totalPosts = timeline.Count();
             var paginatedTimeline = timeline
                 .Skip((page - 1) * pageSize)
@@ -103,6 +108,9 @@ namespace MicrobloggingApp.API.Controllers
         [HttpPut("{id}")]
         public IActionResult EditPost(int id, [FromBody] EditPostRequest request)
         {
+            if (string.IsNullOrWhiteSpace(request.Text))
+                return BadRequest("Post text is required.");
+
             var post = _postService.GetPostById(id);
             if (post == null)
                 return NotFound("Post not found.");
@@ -133,13 +141,8 @@ namespace MicrobloggingApp.API.Controllers
             {
                 "small" => imagePath.Replace("processed", "processed-small"),
                 "large" => imagePath.Replace("processed", "processed-large"),
-                _ => imagePath // Default to medium
+                _ => imagePath
             };
-        }
-
-        private int GetUserId()
-        {
-            return int.Parse(User.Identity.Name); // Assuming User ID is in the token
         }
     }
 }
