@@ -1,4 +1,4 @@
-﻿using Microsoft.IdentityModel.Tokens;
+using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -11,11 +11,12 @@ namespace MicrobloggingApp.API.Helpers
         private readonly string _issuer;
         private readonly string _audience;
 
-        public JwtTokenHelper(string secretKey, string issuer, string audience)
+        public JwtTokenHelper(IConfiguration configuration)
         {
-            _secretKey = secretKey;
-            _issuer = issuer;
-            _audience = audience;
+            var settings = configuration.GetSection("JwtSettings");
+            _secretKey = settings["SecretKey"] ?? throw new InvalidOperationException("JwtSettings:SecretKey is required.");
+            _issuer = settings["Issuer"] ?? throw new InvalidOperationException("JwtSettings:Issuer is required.");
+            _audience = settings["Audience"] ?? throw new InvalidOperationException("JwtSettings:Audience is required.");
         }
 
         public string GenerateToken(string username)
@@ -32,7 +33,7 @@ namespace MicrobloggingApp.API.Helpers
                 issuer: _issuer,
                 audience: _audience,
                 claims: claims,
-                expires: DateTime.Now.AddHours(1),
+                expires: DateTime.UtcNow.AddHours(1),
                 signingCredentials: creds);
 
             return new JwtSecurityTokenHandler().WriteToken(token);

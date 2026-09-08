@@ -1,5 +1,6 @@
-﻿@page
+@page
 @model TimelineModel
+@inject IConfiguration Configuration
 
 <h1>Timeline</h1>
 
@@ -21,7 +22,6 @@
                 <p>@post.Text</p>
                 <img src="@post.ImagePath" alt="Post Image" />
                 <p>@post.CreatedAt.ToString("g")</p>
-
                 <button onclick="editPost(@post.Id)">Edit</button>
                 <button onclick="deletePost(@post.Id)">Delete</button>
             </div>
@@ -46,25 +46,28 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@@microsoft/signalr/dist/browser/signalr.min.js"></script>
-
 <script>
+    const apiBaseUrl = '@Configuration["ApiBaseUrl"]'.replace(/\/$/, '');
+    const signalRHubUrl = '@Configuration["SignalRHubUrl"]';
     const connection = new signalR.HubConnectionBuilder()
-        .withUrl("https://localhost:5001/timelineHub") // API hub URL
+        .withUrl(signalRHubUrl)
         .build();
 
-        connection.on("ReceiveNewPost", (postText, imagePath, createdAt) => {
+    connection.on("ReceiveNewPost", (postText, imagePath, createdAt) => {
         const timeline = document.getElementById("timeline");
-
         const postDiv = document.createElement("div");
         postDiv.className = "post new";
-        postDiv.innerHTML = `
-            <p>${postText}</p>
-            <img src="${imagePath}" alt="Post Image" />
-            <p>${createdAt}</p>
-        `;
-        timeline.prepend(postDiv);
 
-        // Remove the highlight after 5 seconds
+        const text = document.createElement("p");
+        text.textContent = postText;
+        const image = document.createElement("img");
+        image.src = imagePath;
+        image.alt = "Post Image";
+        const date = document.createElement("p");
+        date.textContent = createdAt;
+
+        postDiv.append(text, image, date);
+        timeline.prepend(postDiv);
         setTimeout(() => postDiv.classList.remove("new"), 5000);
     });
 
@@ -77,15 +80,14 @@
             return;
         }
 
-        const response = await fetch(`/api/posts/${postId}`, {
+        const response = await fetch(`${apiBaseUrl}/api/posts/${postId}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ text: newText })
         });
 
         if (response.ok) {
-            alert("Post updated successfully.");
-            location.reload(); // Reload the timeline
+            location.reload();
         } else {
             alert("Failed to update the post.");
         }
@@ -94,13 +96,12 @@
     async function deletePost(postId) {
         if (!confirm("Are you sure you want to delete this post?")) return;
 
-        const response = await fetch(`/api/posts/${postId}`, {
+        const response = await fetch(`${apiBaseUrl}/api/posts/${postId}`, {
             method: "DELETE"
         });
 
         if (response.ok) {
-            alert("Post deleted successfully.");
-            document.getElementById(`post-${postId}`).remove(); // Remove the post from the DOM
+            document.getElementById(`post-${postId}`).remove();
         } else {
             alert("Failed to delete the post.");
         }
