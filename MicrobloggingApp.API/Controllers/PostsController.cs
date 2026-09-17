@@ -14,6 +14,7 @@ namespace MicrobloggingApp.API.Controllers
     [Route("api/[controller]")]
     public class PostsController : ControllerBase
     {
+        private static readonly string[] SupportedScreenSizes = { "small", "medium", "large" };
         private readonly IPostService _postService;
         private readonly IUserService _userService;
         private readonly IBlobStorageService _blobStorageService;
@@ -30,6 +31,9 @@ namespace MicrobloggingApp.API.Controllers
         [HttpPost]
         public async Task<IActionResult> CreatePost([FromForm] CreatePostRequest request)
         {
+            if (request == null)
+                return BadRequest("Post request is required.");
+
             if (string.IsNullOrWhiteSpace(request.Text))
                 return BadRequest("Post text is required.");
 
@@ -73,6 +77,12 @@ namespace MicrobloggingApp.API.Controllers
             page = Math.Max(page, 1);
             pageSize = Math.Clamp(pageSize, 1, 100);
 
+            if (!SupportedScreenSizes.Contains(screenSize, StringComparer.OrdinalIgnoreCase))
+                return BadRequest("Unsupported screen size.");
+
+            if (startDate.HasValue && endDate.HasValue && startDate.Value > endDate.Value)
+                return BadRequest("Start date cannot be later than end date.");
+
             var timeline = _postService.GetTimeline();
 
             if (!string.IsNullOrWhiteSpace(search))
@@ -108,6 +118,9 @@ namespace MicrobloggingApp.API.Controllers
         [HttpPut("{id}")]
         public IActionResult EditPost(int id, [FromBody] EditPostRequest request)
         {
+            if (request == null)
+                return BadRequest("Post request is required.");
+
             if (string.IsNullOrWhiteSpace(request.Text))
                 return BadRequest("Post text is required.");
 
@@ -137,7 +150,7 @@ namespace MicrobloggingApp.API.Controllers
 
         private string AdjustImageForScreenSize(string imagePath, string screenSize)
         {
-            return screenSize switch
+            return screenSize.ToLowerInvariant() switch
             {
                 "small" => imagePath.Replace("processed", "processed-small"),
                 "large" => imagePath.Replace("processed", "processed-large"),
