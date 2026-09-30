@@ -124,12 +124,19 @@ namespace MicrobloggingApp.API.Controllers
             if (string.IsNullOrWhiteSpace(request.Text))
                 return BadRequest("Post text is required.");
 
+            if (request.Text.Length > 140)
+                return BadRequest("Post text exceeds 140 characters.");
+
             var post = _postService.GetPostById(id);
             if (post == null)
                 return NotFound("Post not found.");
 
-            if (request.Text.Length > 140)
-                return BadRequest("Post text exceeds 140 characters.");
+            var currentUserId = GetCurrentUserId();
+            if (!currentUserId.HasValue)
+                return Unauthorized();
+
+            if (post.UserId != currentUserId.Value)
+                return Forbid();
 
             post.Text = request.Text;
             _postService.UpdatePost(post);
@@ -144,8 +151,21 @@ namespace MicrobloggingApp.API.Controllers
             if (post == null)
                 return NotFound("Post not found.");
 
+            var currentUserId = GetCurrentUserId();
+            if (!currentUserId.HasValue)
+                return Unauthorized();
+
+            if (post.UserId != currentUserId.Value)
+                return Forbid();
+
             _postService.DeletePost(post);
             return Ok("Post deleted successfully.");
+        }
+
+        private int? GetCurrentUserId()
+        {
+            var username = User.Identity?.Name;
+            return username == null ? null : _userService.GetUserId(username);
         }
 
         private string AdjustImageForScreenSize(string imagePath, string screenSize)
