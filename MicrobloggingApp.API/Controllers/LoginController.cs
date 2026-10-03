@@ -21,6 +21,12 @@ public class LoginController : ControllerBase
     [HttpPost]
     public IActionResult Login([FromBody] LoginRequest request)
     {
+        if (request == null)
+            return BadRequest("Login request is required.");
+
+        if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Password))
+            return BadRequest("Username and password are required.");
+
         if (_userService.ValidateUser(request.Username, request.Password))
         {
             var token = _jwtTokenHelper.GenerateToken(request.Username);

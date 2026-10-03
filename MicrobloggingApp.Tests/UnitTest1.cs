@@ -1,7 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
@@ -71,6 +71,110 @@ namespace MicrobloggingApp.Tests
                     ["JwtSettings:Audience"] = Audience
                 })
                 .Build();
+        }
+    }
+
+    public class LoginControllerValidationTests
+    {
+        [Fact]
+        public void Login_ReturnsBadRequestForNullRequest()
+        {
+            var userService = new Mock<IUserService>();
+            var controller = new LoginController(userService.Object, null!);
+
+            var result = controller.Login(null!);
+
+            Assert.IsType<BadRequestObjectResult>(result);
+            userService.Verify(service => service.ValidateUser(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Theory]
+        [InlineData("", "password")]
+        [InlineData("aqib", "")]
+        [InlineData(" ", "password")]
+        [InlineData("aqib", " ")]
+        public void Login_ReturnsBadRequestForBlankCredentials(string username, string password)
+        {
+            var userService = new Mock<IUserService>();
+            var controller = new LoginController(userService.Object, null!);
+
+            var result = controller.Login(new LoginRequest { Username = username, Password = password });
+
+            Assert.IsType<BadRequestObjectResult>(result);
+            userService.Verify(service => service.ValidateUser(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+    }
+
+    public class PostsControllerValidationTests
+    {
+        [Fact]
+        public async Task CreatePost_ReturnsBadRequestForNullRequest()
+        {
+            var postService = new Mock<IPostService>();
+            var userService = new Mock<IUserService>();
+            var controller = CreateController(postService, userService);
+
+            var result = await controller.CreatePost(null!);
+
+            Assert.IsType<BadRequestObjectResult>(result);
+            postService.Verify(service => service.CreatePost(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task CreatePost_ReturnsBadRequestForBlankText()
+        {
+            var postService = new Mock<IPostService>();
+            var userService = new Mock<IUserService>();
+            var controller = CreateController(postService, userService);
+
+            var result = await controller.CreatePost(new CreatePostRequest { Text = " " });
+
+            Assert.IsType<BadRequestObjectResult>(result);
+            postService.Verify(service => service.CreatePost(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>()), Times.Never);
+        }
+
+        [Fact]
+        public void EditPost_ReturnsBadRequestForNullRequest()
+        {
+            var postService = new Mock<IPostService>();
+            var userService = new Mock<IUserService>();
+            var controller = CreateController(postService, userService);
+
+            var result = controller.EditPost(1, null!);
+
+            Assert.IsType<BadRequestObjectResult>(result);
+            postService.Verify(service => service.GetPostById(It.IsAny<int>()), Times.Never);
+        }
+
+        [Fact]
+        public void GetTimeline_ReturnsBadRequestForUnsupportedScreenSize()
+        {
+            var controller = CreateController(new Mock<IPostService>(), new Mock<IUserService>());
+
+            var result = controller.GetTimeline(screenSize: "tablet");
+
+            Assert.IsType<BadRequestObjectResult>(result);
+        }
+
+        [Fact]
+        public void GetTimeline_ReturnsBadRequestForInvalidDateRange()
+        {
+            var controller = CreateController(new Mock<IPostService>(), new Mock<IUserService>());
+
+            var result = controller.GetTimeline(
+                startDate: new DateTime(2026, 10, 2),
+                endDate: new DateTime(2026, 10, 1));
+
+            Assert.IsType<BadRequestObjectResult>(result);
+        }
+
+        private static PostsController CreateController(Mock<IPostService> postService, Mock<IUserService> userService)
+        {
+            return new PostsController(
+                postService.Object,
+                userService.Object,
+                new Mock<IBlobStorageService>().Object,
+                new Mock<IHubContext<TimelineHub>>().Object);
         }
     }
 
